@@ -2,6 +2,9 @@
 
 Vaultroom is a full-stack data-room MVP for confidential due diligence. Authenticated owners create rooms, organise nested folders, upload and preview PDFs, resolve duplicate names, move or delete documents, and create revocable read-only shares.
 
+- Live web: <https://vaultroom-ruby.vercel.app>
+- API health: <https://vaultroom-api-production.up.railway.app>
+
 ## Live architecture
 
 - `apps/web`: Next.js 16, React 19, Clerk, TypeScript
