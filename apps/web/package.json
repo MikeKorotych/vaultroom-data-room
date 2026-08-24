@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'Web tests are added with the first interactive flow'"
+    "test": "tsc --noEmit"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.0",

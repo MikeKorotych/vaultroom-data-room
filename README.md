@@ -23,7 +23,12 @@ The browser talks directly to the Nest API with a short-lived Clerk session toke
 - Inline PDF preview
 - Conflict-safe naming (`report.pdf`, `report (1).pdf`, ...)
 - Document rename, move to any folder/root and delete
+- Drag a PDF onto a folder or root breadcrumb to move it
 - Public or email-restricted, read-only links for a room, folder or individual PDF
+- Review controls with active links, invited reviewers and immediate revocation
+- Owner-only room rename and permanent room deletion
+- Audit trail for uploads, views, moves, deletes and access changes
+- One-click demo room with three generated PDFs for a fast product walkthrough
 - Revocable shares; shared document endpoints re-check scope on every request
 - Responsive, keyboard-friendly interface with reduced-motion support
 
@@ -103,6 +108,8 @@ pnpm --filter api db:push
 Authenticated owner endpoints:
 
 - `GET/POST /rooms`
+- `POST /rooms/demo`, `PATCH/DELETE /rooms/:roomId`
+- `GET /rooms/:roomId/overview`
 - `GET /rooms/:roomId/contents?folderId=`
 - `POST /rooms/:roomId/folders`
 - `PATCH/DELETE /folders/:folderId`
@@ -139,8 +146,7 @@ Permissioned links additionally validate the signed-in Clerk user's email agains
 
 ## What I would add next
 
-- Share-management panel listing active links with one-click revocation
-- Audit log and download analytics
+- Download analytics and exportable audit reports
 - Direct multipart uploads, checksums and virus scanning
 - Playwright end-to-end tests against disposable Postgres and MinIO
 - Optimistic locking for concurrent rename/move operations

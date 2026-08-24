@@ -8,3 +8,5 @@ coverage
 !.env.example
 .DS_Store
 uploads
+.playwright-cli
+output/playwright

@@ -64,6 +64,54 @@ describe('RoomsService', () => {
     expect(storage.put).not.toHaveBeenCalled();
   });
 
+  it('renames a room and records the previous name', async () => {
+    prisma.dataRoom.findFirst.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      name: 'Old deal',
+    });
+    prisma.dataRoom.update.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      name: 'New deal',
+    });
+
+    await expect(
+      service.updateRoom('owner-1', 'room-1', 'New deal'),
+    ).resolves.toMatchObject({ name: 'New deal' });
+    expect(prisma.dataRoom.update).toHaveBeenCalledWith({
+      where: { id: 'room-1' },
+      data: { name: 'New deal' },
+    });
+    expect(prisma.auditEvent.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes room objects before deleting room metadata', async () => {
+    prisma.dataRoom.findFirst.mockResolvedValue({
+      id: 'room-1',
+      ownerId: 'owner-1',
+      name: 'Deal room',
+    });
+    prisma.document.findMany.mockResolvedValue([
+      { storageKey: 'room/file-a.pdf' },
+      { storageKey: 'room/file-b.pdf' },
+    ]);
+    storage.remove.mockResolvedValue(undefined);
+    prisma.dataRoom.delete.mockResolvedValue({ id: 'room-1' });
+
+    await expect(service.deleteRoom('owner-1', 'room-1')).resolves.toEqual({
+      deleted: true,
+      deletedDocuments: 2,
+    });
+    expect(storage.remove).toHaveBeenCalledWith([
+      'room/file-a.pdf',
+      'room/file-b.pdf',
+    ]);
+    expect(prisma.dataRoom.delete).toHaveBeenCalledWith({
+      where: { id: 'room-1' },
+    });
+  });
+
   it('requires an email for permissioned shares', async () => {
     await expect(
       service.createShare('owner-1', {
