@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Req, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import type { Request, Response } from 'express';
@@ -12,8 +12,12 @@ export class SharedController {
   ) {}
 
   @Get(':token')
-  async view(@Param('token') token: string, @Req() request: Request) {
-    return this.rooms.sharedView(token, await this.viewer(request));
+  async view(
+    @Param('token') token: string,
+    @Query('folderId') folderId: string | undefined,
+    @Req() request: Request,
+  ) {
+    return this.rooms.sharedView(token, await this.viewer(request), folderId);
   }
 
   @Get(':token/documents/:documentId')

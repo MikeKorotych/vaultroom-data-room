@@ -238,6 +238,7 @@ export class RoomsService {
   async sharedView(
     token: string,
     viewer?: { userId: string; emails: string[] },
+    requestedFolderId?: string,
   ) {
     const share = await this.prisma.share.findUnique({
       where: { token },
@@ -273,7 +274,16 @@ export class RoomsService {
     }
     const room = share.dataRoom ?? share.folder?.dataRoom;
     if (!room) throw new NotFoundException('Shared content no longer exists');
-    const folderId = share.folderId ?? undefined;
+    const folderId = requestedFolderId ?? share.folderId ?? undefined;
+    if (folderId) {
+      const requestedFolder = await this.requireFolder(room.id, folderId);
+      if (share.folderId) {
+        const descendants = await this.descendantFolderIds(share.folderId);
+        if (!descendants.includes(requestedFolder.id)) {
+          throw new ForbiddenException('Folder is outside this share');
+        }
+      }
+    }
     const [folders, documents, breadcrumbs] = await Promise.all([
       this.prisma.folder.findMany({
         where: { dataRoomId: room.id, parentId: folderId ?? null },
@@ -294,7 +304,14 @@ export class RoomsService {
       },
       room: { id: room.id, name: room.name },
       folderId: folderId ?? null,
-      breadcrumbs,
+      breadcrumbs: share.folderId
+        ? breadcrumbs.slice(
+            Math.max(
+              0,
+              breadcrumbs.findIndex((item) => item.id === share.folderId),
+            ),
+          )
+        : breadcrumbs,
       folders,
       documents: documents.map((document) => this.publicDocument(document)),
     };

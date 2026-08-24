@@ -1,7 +1,7 @@
 "use client";
 
 import { SignInButton, useAuth } from "@clerk/nextjs";
-import { FileText, Folder, LoaderCircle, LockKeyhole, ShieldCheck, X } from "lucide-react";
+import { ChevronRight, FileText, Folder, LoaderCircle, LockKeyhole, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { API_URL } from "@/lib/api";
 
@@ -11,6 +11,8 @@ type SharedData = {
   document?: { id: string; name: string; size: number };
   folders?: Array<{ id: string; name: string; _count: { children: number; documents: number } }>;
   documents?: Array<{ id: string; name: string; size: number }>;
+  folderId?: string | null;
+  breadcrumbs?: Array<{ id: string; name: string }>;
 };
 
 export function SharedRoomView({ token }: { token: string }) {
@@ -19,10 +21,11 @@ export function SharedRoomView({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<{ name: string; url: string } | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (folderId?: string) => {
     if (!isLoaded) return;
     const sessionToken = await getToken();
-    const response = await fetch(`${API_URL}/shared/${token}`, { headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined });
+    const suffix = folderId ? `?folderId=${encodeURIComponent(folderId)}` : "";
+    const response = await fetch(`${API_URL}/shared/${token}${suffix}`, { headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined });
     if (!response.ok) {
       const payload = await response.json().catch(() => null) as { message?: string } | null;
       setError(payload?.message ?? "This share is unavailable");
@@ -50,5 +53,5 @@ export function SharedRoomView({ token }: { token: string }) {
   if (!data) return <main className="sharedDenied"><LockKeyhole /><p className="eyebrow">RESTRICTED SHARE</p><h1>Access required.</h1><p>{error}</p>{!isSignedIn && <SignInButton mode="modal"><button>Sign in to continue</button></SignInButton>}</main>;
 
   const documents = data.document ? [data.document] : data.documents ?? [];
-  return <main className="sharedPage"><header><div><ShieldCheck /><span>VAULTROOM / SHARED</span></div><p>READ ONLY · {data.share.mode}</p></header><section className="sharedHero"><p className="eyebrow">CONFIDENTIAL DOCUMENT REVIEW</p><h1>{data.room.name}</h1><p>This view cannot upload, rename, move or delete content.</p></section><section className="sharedAssets">{data.folders?.map((folder) => <article key={folder.id}><i><Folder /></i><span><strong>{folder.name}</strong><small>{folder._count.children + folder._count.documents} items</small></span></article>)}{documents.map((document) => <button key={document.id} onClick={() => void openDocument(document)}><i><FileText /></i><span><strong>{document.name}</strong><small>PDF · {(document.size / 1024 / 1024).toFixed(1)} MB</small></span></button>)}</section>{preview && <div className="previewPanel sharedPreview"><header><div><FileText /><strong>{preview.name}</strong></div><button onClick={() => setPreview(null)}><X /></button></header><iframe title={preview.name} src={preview.url} /></div>}</main>;
+  return <main className="sharedPage"><header><div><ShieldCheck /><span>VAULTROOM / SHARED</span></div><p>READ ONLY · {data.share.mode}</p></header><section className="sharedHero"><p className="eyebrow">CONFIDENTIAL DOCUMENT REVIEW</p><h1>{data.room.name}</h1><p>This view cannot upload, rename, move or delete content.</p></section>{!!data.breadcrumbs?.length && <nav className="sharedBreadcrumbs"><button onClick={() => void load()}>Shared root</button>{data.breadcrumbs.map((crumb) => <span key={crumb.id}><ChevronRight /><button onClick={() => void load(crumb.id)}>{crumb.name}</button></span>)}</nav>}<section className="sharedAssets">{data.folders?.map((folder) => <button key={folder.id} onClick={() => void load(folder.id)}><i><Folder /></i><span><strong>{folder.name}</strong><small>{folder._count.children + folder._count.documents} items</small></span></button>)}{documents.map((document) => <button key={document.id} onClick={() => void openDocument(document)}><i><FileText /></i><span><strong>{document.name}</strong><small>PDF · {(document.size / 1024 / 1024).toFixed(1)} MB</small></span></button>)}</section>{preview && <div className="previewPanel sharedPreview"><header><div><FileText /><strong>{preview.name}</strong></div><button onClick={() => setPreview(null)}><X /></button></header><iframe title={preview.name} src={preview.url} /></div>}</main>;
 }

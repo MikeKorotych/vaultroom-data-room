@@ -38,6 +38,7 @@ export function DataRoomApp() {
   const [shareMode, setShareMode] = useState<"PUBLIC" | "PERMISSIONED">("PUBLIC");
   const [shareEmail, setShareEmail] = useState("");
   const [shareLink, setShareLink] = useState("");
+  const [shareId, setShareId] = useState("");
   const [copied, setCopied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -180,6 +181,7 @@ export function DataRoomApp() {
     setSelectedAsset(null);
     setShareTarget(next);
     setShareLink("");
+    setShareId("");
     setShareMode("PUBLIC");
     setShareEmail("");
   }
@@ -187,11 +189,20 @@ export function DataRoomApp() {
   async function createShare(event: FormEvent) {
     event.preventDefault();
     if (!shareTarget) return;
-    const share = await apiRequest<{ token: string }>(getToken, "/shares", {
+    const share = await apiRequest<{ id: string; token: string }>(getToken, "/shares", {
       method: "POST",
       body: JSON.stringify({ scope: shareTarget.scope, targetId: shareTarget.id, mode: shareMode, email: shareMode === "PERMISSIONED" ? shareEmail : undefined }),
     });
+    setShareId(share.id);
     setShareLink(`${window.location.origin}/share/${share.token}`);
+  }
+
+  async function revokeCurrentShare() {
+    if (!shareId) return;
+    await apiRequest(getToken, `/shares/${shareId}/revoke`, { method: "PATCH" });
+    setShareLink("");
+    setShareId("");
+    setShareTarget(null);
   }
 
   function onDrop(event: DragEvent) {
@@ -232,7 +243,7 @@ export function DataRoomApp() {
       </section>
       {folderDialogOpen && <div className="modalBackdrop" onMouseDown={() => setFolderDialogOpen(false)}><form className="vaultModal" onMouseDown={(event) => event.stopPropagation()} onSubmit={createFolder}><button type="button" className="modalClose" onClick={() => setFolderDialogOpen(false)}><X /></button><p className="eyebrow">NEW CONTAINER</p><h2>Create folder</h2><label>Folder name<input value={folderName} onChange={(event) => setFolderName(event.target.value)} autoFocus placeholder="Financial statements" /></label><div><button type="button" className="quietButton" onClick={() => setFolderDialogOpen(false)}>Cancel</button><button className="primaryButton">Create folder</button></div></form></div>}
       {selectedAsset && <div className="modalBackdrop" onMouseDown={() => setSelectedAsset(null)}><section className="vaultModal assetModal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="modalClose" onClick={() => setSelectedAsset(null)}><X /></button><p className="eyebrow">{selectedAsset.kind.toUpperCase()} ACTIONS</p><h2>{selectedAsset.name}</h2><label>Rename<input value={assetName} onChange={(event) => setAssetName(event.target.value)} /></label><button className="actionLine" onClick={() => void renameAsset()}><Pencil /> Save new name</button>{selectedAsset.kind === "document" && <><label>Move to<select value={targetFolderId} onChange={(event) => setTargetFolderId(event.target.value)}><option value="">Data room root</option>{folderOptions.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><button className="actionLine" onClick={() => void moveDocument()}><FolderInput /> Move document</button></>}<button className="actionLine" onClick={() => beginShare(selectedAsset)}><Share2 /> Share {selectedAsset.kind}</button><button className="actionLine dangerAction" onClick={() => void deleteAsset()}><Trash2 /> Delete {selectedAsset.kind}</button></section></div>}
-      {shareTarget && <div className="modalBackdrop" onMouseDown={() => setShareTarget(null)}><form className="vaultModal shareModal" onMouseDown={(event) => event.stopPropagation()} onSubmit={createShare}><button type="button" className="modalClose" onClick={() => setShareTarget(null)}><X /></button><p className="eyebrow">READ-ONLY ACCESS</p><h2>Share {shareTarget.name}</h2>{!shareLink ? <><div className="shareModes"><button type="button" data-active={shareMode === "PUBLIC"} onClick={() => setShareMode("PUBLIC")}><Globe2 /><span><strong>Public link</strong><small>Anyone with the link can view</small></span></button><button type="button" data-active={shareMode === "PERMISSIONED"} onClick={() => setShareMode("PERMISSIONED")}><LockKeyhole /><span><strong>Invited person</strong><small>Clerk sign-in and matching email required</small></span></button></div>{shareMode === "PERMISSIONED" && <label>Recipient email<input type="email" required value={shareEmail} onChange={(event) => setShareEmail(event.target.value)} placeholder="reviewer@company.com" /></label>}<div><button type="button" className="quietButton" onClick={() => setShareTarget(null)}>Cancel</button><button className="primaryButton"><Link2 /> Create link</button></div></> : <div className="shareResult"><Check /><strong>Read-only link created</strong><p>The link can be revoked from the API and never grants edit access.</p><button type="button" onClick={async () => { await navigator.clipboard.writeText(shareLink); setCopied(true); }}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy link"}</button><a href={shareLink} target="_blank">Open shared view</a></div>}</form></div>}
+      {shareTarget && <div className="modalBackdrop" onMouseDown={() => setShareTarget(null)}><form className="vaultModal shareModal" onMouseDown={(event) => event.stopPropagation()} onSubmit={createShare}><button type="button" className="modalClose" onClick={() => setShareTarget(null)}><X /></button><p className="eyebrow">READ-ONLY ACCESS</p><h2>Share {shareTarget.name}</h2>{!shareLink ? <><div className="shareModes"><button type="button" data-active={shareMode === "PUBLIC"} onClick={() => setShareMode("PUBLIC")}><Globe2 /><span><strong>Public link</strong><small>Anyone with the link can view</small></span></button><button type="button" data-active={shareMode === "PERMISSIONED"} onClick={() => setShareMode("PERMISSIONED")}><LockKeyhole /><span><strong>Invited person</strong><small>Clerk sign-in and matching email required</small></span></button></div>{shareMode === "PERMISSIONED" && <label>Recipient email<input type="email" required value={shareEmail} onChange={(event) => setShareEmail(event.target.value)} placeholder="reviewer@company.com" /></label>}<div><button type="button" className="quietButton" onClick={() => setShareTarget(null)}>Cancel</button><button className="primaryButton"><Link2 /> Create link</button></div></> : <div className="shareResult"><Check /><strong>Read-only link created</strong><p>The link is active now and never grants edit access.</p><button type="button" onClick={async () => { await navigator.clipboard.writeText(shareLink); setCopied(true); }}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy link"}</button><a href={shareLink} target="_blank">Open shared view</a><button type="button" className="revokeLink" onClick={() => void revokeCurrentShare()}><Trash2 /> Revoke access</button></div>}</form></div>}
       {preview && <div className="previewPanel"><header><div><FileText /><strong>{preview.name}</strong></div><button onClick={() => setPreview(null)}><X /></button></header><iframe title={preview.name} src={preview.url} /></div>}
     </main>
   );

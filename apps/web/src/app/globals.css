@@ -124,6 +124,7 @@ button { color:inherit; }
 .shareResult p { margin:0; color:var(--muted); font-size:11px; line-height:1.6; }
 .shareResult button,.shareResult a { min-height:42px; padding:0 14px; display:inline-flex; align-items:center; gap:8px; border:1px solid var(--ink); color:var(--paper); background:var(--ink); text-decoration:none; cursor:pointer; font-size:10px; font-weight:750; }
 .shareResult svg { width:14px; }
+.shareResult .revokeLink { border-color:rgba(156,59,50,.45); color:var(--danger); background:transparent; }
 
 .previewPanel { position:fixed; z-index:55; inset:18px 18px 18px max(268px,18vw); display:grid; grid-template-rows:54px 1fr; border:1px solid #444b44; background:#252b26; box-shadow:0 30px 100px rgba(22,25,22,.45); }
 .previewPanel header { padding:0 16px; display:flex; align-items:center; justify-content:space-between; color:#f1f0e9; border-bottom:1px solid #454c45; }
@@ -146,6 +147,10 @@ button { color:inherit; }
 .sharedHero { min-height:330px; padding:70px 6vw 42px; border-bottom:1px solid var(--line); }
 .sharedHero h1 { margin:18px 0; font:520 clamp(64px,9vw,120px)/.82 "Newsreader Variable",serif; letter-spacing:-.06em; }
 .sharedHero>p:last-child { color:var(--muted); font-size:11px; }
+.sharedBreadcrumbs { min-height:54px; padding:0 6vw; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--line); }
+.sharedBreadcrumbs span { display:flex; align-items:center; gap:8px; }
+.sharedBreadcrumbs svg { width:13px; color:var(--muted); }
+.sharedBreadcrumbs button { padding:0; border:0; background:transparent; cursor:pointer; font-size:10px; font-weight:750; }
 .sharedAssets { padding:32px 6vw 70px; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:10px; }
 .sharedAssets article,.sharedAssets button { min-height:82px; padding:14px; display:flex; align-items:center; gap:12px; border:1px solid var(--line); background:var(--sheet); text-align:left; }
 .sharedAssets button { cursor:pointer; }

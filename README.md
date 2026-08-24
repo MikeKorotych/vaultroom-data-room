@@ -137,7 +137,6 @@ Permissioned links additionally validate the signed-in Clerk user's email agains
 ## What I would add next
 
 - Share-management panel listing active links with one-click revocation
-- Folder navigation inside a shared room view
 - Audit log and download analytics
 - Direct multipart uploads, checksums and virus scanning
 - Playwright end-to-end tests against disposable Postgres and MinIO
