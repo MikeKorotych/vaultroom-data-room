@@ -78,8 +78,8 @@ Requirements: Node 22+, pnpm 11, PostgreSQL, an S3-compatible bucket and a Clerk
 pnpm install
 cp apps/api/.env.example apps/api/.env
 cp apps/web/.env.example apps/web/.env.local
-pnpm --filter api prisma generate
-pnpm --filter api prisma db push
+pnpm --filter api exec prisma generate
+pnpm --filter api db:push
 pnpm dev
 ```
 
@@ -91,8 +91,8 @@ The web app uses `http://localhost:3000`; the API uses `http://localhost:4000`. 
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm --filter api prisma format
-pnpm --filter api prisma db push
+pnpm --filter api exec prisma format
+pnpm --filter api db:push
 ```
 
 ## API summary
