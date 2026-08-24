@@ -10,3 +10,4 @@ coverage
 uploads
 .playwright-cli
 output/playwright
+.private

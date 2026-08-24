@@ -135,14 +135,28 @@ Permissioned links additionally validate the signed-in Clerk user's email agains
 
 ## Scaling to millions of files
 
+### How do you compute a folder's recursive size and item count?
+
+For the current MVP, use a PostgreSQL recursive CTE starting at the requested folder, collect every descendant folder id, then aggregate `COUNT(*)` and `SUM(size)` from `Document` where `folderId` is in that set. The same query must run behind the owner/share scope check; an empty subtree returns zero for both values.
+
+At sustained scale, that read becomes too expensive to repeat. I would store denormalised direct and recursive counters per folder and update them asynchronously from an idempotent outbox event on upload, move and delete. The database remains the source of truth, so a scheduled reconciliation can detect and repair drift.
+
+### What changes at 100,000 files in one Data Room?
+
 - Replace offset-style listing with indexed cursor pagination on `(folderId, name, id)`.
+- Never load the whole tree for a picker: fetch children on demand and search through a dedicated indexed endpoint.
 - Upload directly to multipart object storage with presigned URLs; finalise metadata asynchronously after checksum and malware scanning.
 - Serve PDF ranges through a CDN using short-lived signed URLs.
 - Store denormalised aggregate counts and process them with an outbox/queue rather than counting descendants during reads.
 - Add `ltree`/materialised paths for one-query subtree checks, while retaining the adjacency relation as the canonical mutation model.
+- Keep the existing sibling uniqueness constraint and add covering indexes for the actual list/sort paths, for example `(dataRoomId, parentKey, name, id)`.
 - Partition document and audit-event tables by tenant/room hash, use read replicas for listing and isolate search in OpenSearch.
 - Add immutable audit events for view/download/share/revoke, tenant quotas, retention policies and KMS-backed per-tenant encryption keys.
 - Make deletion a durable job: mark tombstones transactionally, remove objects idempotently, then purge metadata after retention.
+
+### How does sharing extend to viewer/editor roles without remodeling?
+
+`Share` already stores `role`, `granteeUserId`, `email` and exactly one room/folder/document scope. Adding editor access therefore does not require a new relationship model. I would introduce an authorization policy that resolves the effective grant for the signed-in user and requested resource, then maps `VIEWER` to read actions and `EDITOR` to read plus create/rename/move/delete actions inside that scope. Public links remain viewer-only. The current MVP intentionally exposes only read-only shares because that is the assignment's functional requirement.
 
 ## What I would add next
 

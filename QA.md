@@ -36,4 +36,4 @@ Checked against <https://vaultroom-ruby.vercel.app> and the Railway API:
 8. Rename the room in Review → Room.
 9. Delete a disposable room and verify that it disappears from the rail.
 
-The production browser currently uses development Clerk keys. Replace them after completing `clerk deploy` for the dedicated Vaultroom application. The CLI-created app id is `app_3IMi6bNajA2G0YxJyQ1P86wDgOO`.
+The hosted take-home intentionally uses Clerk development keys: Google authentication works, while enabling a Clerk production instance would require purchasing and configuring a custom domain solely for the assignment. A real product launch would replace the keys after domain, DNS and production OAuth verification.
