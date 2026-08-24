@@ -1,0 +1,12 @@
+{
+  "name": "acme-data-room",
+  "private": true,
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter ./apps/* dev",
+    "build": "pnpm --filter ./apps/api build && pnpm --filter ./apps/web build",
+    "lint": "pnpm --recursive lint",
+    "test": "pnpm --recursive test",
+    "typecheck": "pnpm --recursive typecheck"
+  }
+}

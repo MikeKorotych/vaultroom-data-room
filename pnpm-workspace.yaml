@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - "prisma"
+  - "unrs-resolver"
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  unrs-resolver: true

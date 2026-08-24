@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ShareMode {
+  PUBLIC
+  PERMISSIONED
+}
+
+enum ShareRole {
+  VIEWER
+  EDITOR
+}
+
+model DataRoom {
+  id        String     @id @default(cuid())
+  name      String
+  ownerId   String
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  folders   Folder[]
+  documents Document[]
+  shares    Share[]
+
+  @@index([ownerId, updatedAt])
+}
+
+model Folder {
+  id         String     @id @default(cuid())
+  dataRoomId String
+  parentId   String?
+  parentKey  String
+  name       String
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  dataRoom   DataRoom   @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  parent     Folder?    @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   Folder[]   @relation("FolderTree")
+  documents  Document[]
+  shares     Share[]
+
+  @@unique([dataRoomId, parentKey, name])
+  @@index([dataRoomId, parentId, name])
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  dataRoomId String
+  folderId   String?
+  parentKey  String
+  name       String
+  mimeType   String
+  size       BigInt
+  storageKey String   @unique
+  checksum   String?
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  dataRoom   DataRoom @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  folder     Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  shares     Share[]
+
+  @@unique([dataRoomId, parentKey, name])
+  @@index([dataRoomId, name])
+  @@index([folderId, createdAt])
+}
+
+model Share {
+  id            String    @id @default(cuid())
+  dataRoomId    String?
+  folderId      String?
+  documentId    String?
+  mode          ShareMode
+  role          ShareRole @default(VIEWER)
+  token         String    @unique
+  email         String?
+  granteeUserId String?
+  createdBy     String
+  createdAt     DateTime  @default(now())
+  revokedAt     DateTime?
+  dataRoom      DataRoom? @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+  folder        Folder?   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  document      Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([token, revokedAt])
+  @@index([granteeUserId, revokedAt])
+  @@index([email, revokedAt])
+  @@index([dataRoomId, revokedAt])
+  @@index([folderId, revokedAt])
+  @@index([documentId, revokedAt])
+}
