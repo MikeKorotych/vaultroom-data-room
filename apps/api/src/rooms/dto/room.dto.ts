@@ -6,6 +6,12 @@ export class CreateRoomDto {
   name!: string;
 }
 
+export class UpdateRoomDto {
+  @IsString()
+  @Length(1, 120)
+  name!: string;
+}
+
 export class CreateFolderDto {
   @IsString()
   @Length(1, 120)

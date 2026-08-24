@@ -12,20 +12,34 @@ import { ShareModeInput, ShareScope } from './dto/room.dto';
 
 describe('RoomsService', () => {
   const prisma = {
-    dataRoom: { create: jest.fn(), findFirst: jest.fn() },
+    dataRoom: {
+      create: jest.fn(),
+      findFirst: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
     folder: {
       findFirst: jest.fn(),
       findMany: jest.fn(),
       create: jest.fn(),
       delete: jest.fn(),
     },
-    document: { findMany: jest.fn(), findUnique: jest.fn(), delete: jest.fn() },
+    document: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      create: jest.fn(),
+      delete: jest.fn(),
+    },
     share: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
+    auditEvent: { create: jest.fn(), findMany: jest.fn() },
   };
   const storage = { put: jest.fn(), get: jest.fn(), remove: jest.fn() };
   const service = new RoomsService(prisma as never, storage as never);
 
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prisma.auditEvent.create.mockResolvedValue({ id: 'audit-1' });
+  });
 
   it('sanitises names before creating a room', async () => {
     prisma.dataRoom.create.mockResolvedValue({ id: 'room-1', name: 'Deal-Q3' });
@@ -33,6 +47,7 @@ describe('RoomsService', () => {
     expect(prisma.dataRoom.create).toHaveBeenCalledWith({
       data: { ownerId: 'owner-1', name: 'Deal-Q3' },
     });
+    expect(prisma.auditEvent.create).toHaveBeenCalledTimes(1);
   });
 
   it('rejects non-PDF uploads before writing to object storage', async () => {

@@ -1,9 +1,10 @@
 "use client";
 
 import { useAuth, UserButton } from "@clerk/nextjs";
-import { ArrowLeft, Check, ChevronRight, Copy, FileText, Folder, FolderInput, FolderPlus, Globe2, Link2, LoaderCircle, LockKeyhole, MoreHorizontal, Pencil, Search, Share2, ShieldCheck, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Copy, Eye, FileText, Folder, FolderInput, FolderPlus, Globe2, History, Link2, LoaderCircle, LockKeyhole, MoreHorizontal, Pencil, Search, Share2, ShieldCheck, Trash2, Upload, X } from "lucide-react";
 import { DragEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_URL, apiRequest } from "@/lib/api";
+import { ReviewPanel } from "@/components/review-panel";
 
 type Room = { id: string; name: string; updatedAt: string; _count?: { folders: number; documents: number } };
 type FolderItem = { id: string; name: string; updatedAt: string; _count: { children: number; documents: number } };
@@ -40,13 +41,16 @@ export function DataRoomApp() {
   const [shareLink, setShareLink] = useState("");
   const [shareId, setShareId] = useState("");
   const [copied, setCopied] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [draggedDocument, setDraggedDocument] = useState<{ id: string; name: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadRooms = useCallback(async () => {
     try {
       const nextRooms = await apiRequest<Room[]>(getToken, "/rooms");
       setRooms(nextRooms);
-      setActiveRoomId((current) => current ?? nextRooms[0]?.id ?? null);
+      setActiveRoomId((current) => current && nextRooms.some((room) => room.id === current) ? current : nextRooms[0]?.id ?? null);
       setError("");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Could not load data rooms");
@@ -91,6 +95,19 @@ export function DataRoomApp() {
     setRooms((current) => [room, ...current]);
     setActiveRoomId(room.id);
     setNewRoomName("");
+  }
+
+  async function createDemoRoom() {
+    setDemoLoading(true);
+    try {
+      const room = await apiRequest<Room>(getToken, "/rooms/demo", { method: "POST" });
+      await loadRooms();
+      setActiveRoomId(room.id);
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "Could not create the example room");
+    } finally {
+      setDemoLoading(false);
+    }
   }
 
   async function createFolder(event: FormEvent) {
@@ -160,6 +177,16 @@ export function DataRoomApp() {
     await loadContents(activeRoomId, contents?.folderId);
   }
 
+  async function moveDroppedDocument(folderId: string | null) {
+    if (!draggedDocument || !activeRoomId) return;
+    await apiRequest(getToken, `/documents/${draggedDocument.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ folderId }),
+    });
+    setDraggedDocument(null);
+    await loadContents(activeRoomId, contents?.folderId);
+  }
+
   async function deleteAsset() {
     if (!selectedAsset || !activeRoomId) return;
     const warning = selectedAsset.kind === "folder"
@@ -208,7 +235,7 @@ export function DataRoomApp() {
   function onDrop(event: DragEvent) {
     event.preventDefault();
     setDragging(false);
-    void uploadFiles(Array.from(event.dataTransfer.files));
+    if (event.dataTransfer.files.length) void uploadFiles(Array.from(event.dataTransfer.files));
   }
 
   if (loading && !rooms.length) return <div className="loadingScreen"><LoaderCircle className="spin" /><span>Opening secure workspace</span></div>;
@@ -216,7 +243,7 @@ export function DataRoomApp() {
   if (!rooms.length) return (
     <main className="emptyWorkspace">
       <div className="emptyBrand"><ShieldCheck /><span>VAULTROOM / 01</span></div>
-      <section><p className="eyebrow">PRIVATE DUE DILIGENCE</p><h1>Create the room<br />before the deal.</h1><p>One secure workspace for every document, reviewer and decision.</p><form onSubmit={createRoom}><input value={newRoomName} onChange={(event) => setNewRoomName(event.target.value)} placeholder="Acme acquisition" autoFocus /><button>Create data room <ChevronRight /></button></form>{error && <small>{error}</small>}</section>
+      <section><p className="eyebrow">PRIVATE DUE DILIGENCE</p><h1>Create the room<br />before the deal.</h1><p>One secure workspace for every document, reviewer and decision.</p><form onSubmit={createRoom}><input value={newRoomName} onChange={(event) => setNewRoomName(event.target.value)} placeholder="Acme acquisition" autoFocus /><button>Create data room <ChevronRight /></button></form><button className="demoRoomButton" onClick={() => void createDemoRoom()} disabled={demoLoading}>{demoLoading ? <LoaderCircle className="spin" /> : <Eye />} Explore a prepared review room</button>{error && <small>{error}</small>}</section>
     </main>
   );
 
@@ -228,14 +255,14 @@ export function DataRoomApp() {
         <div className="railIdentity"><UserButton /><div><strong>Room owner</strong><small>Authenticated</small></div></div>
       </aside>
 
-      <section className="vaultWorkspace" onDragEnter={() => setDragging(true)}>
-        <header className="vaultTopbar"><div className="breadcrumbs"><button onClick={() => activeRoomId && void loadContents(activeRoomId)}>{currentRoom?.name}</button>{contents?.breadcrumbs.map((crumb) => <span key={crumb.id}><ChevronRight /><button onClick={() => activeRoomId && void loadContents(activeRoomId, crumb.id)}>{crumb.name}</button></span>)}</div><div className="topbarActions"><label className="searchBox"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this folder" /></label><button className="quietButton" onClick={() => beginShare()}><Share2 /> Share</button></div></header>
+      <section className="vaultWorkspace" onDragEnter={(event) => { if (Array.from(event.dataTransfer.types).includes("Files")) setDragging(true); }}>
+        <header className="vaultTopbar"><div className="breadcrumbs"><button onClick={() => activeRoomId && void loadContents(activeRoomId)} onDragOver={(event) => draggedDocument && event.preventDefault()} onDrop={(event) => { event.preventDefault(); void moveDroppedDocument(null); }}>{currentRoom?.name}</button>{contents?.breadcrumbs.map((crumb) => <span key={crumb.id}><ChevronRight /><button onClick={() => activeRoomId && void loadContents(activeRoomId, crumb.id)}>{crumb.name}</button></span>)}</div><div className="topbarActions"><label className="searchBox"><Search /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this folder" /></label><button className="quietButton" onClick={() => setReviewOpen(true)}><History /> Review</button><button className="quietButton" onClick={() => beginShare()}><Share2 /> Share</button></div></header>
         <div className="workspaceHeading"><div><p className="eyebrow">CONFIDENTIAL / OWNER ACCESS</p><h1>{contents?.breadcrumbs.at(-1)?.name ?? currentRoom?.name}</h1></div><div className="workspaceActions"><button className="quietButton" onClick={() => setFolderDialogOpen(true)}><FolderPlus /> New folder</button><button className="primaryButton" onClick={() => fileInputRef.current?.click()}><Upload /> Upload PDF</button><input ref={fileInputRef} type="file" accept="application/pdf" multiple hidden onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} /></div></div>
         {contents?.folderId && <button className="backButton" onClick={() => { const parent = contents.breadcrumbs.at(-2)?.id; if (activeRoomId) void loadContents(activeRoomId, parent); }}><ArrowLeft /> Parent folder</button>}
         {error && <p className="errorBanner">{error}</p>}
         <section className="assetTable"><header><span>Name</span><span>Kind</span><span>Modified</span><span>Size</span><span /></header>
-          {visibleFolders.map((folder) => <button className="assetRow" key={folder.id} onClick={() => activeRoomId && void loadContents(activeRoomId, folder.id)}><span className="assetName"><i className="folderIcon"><Folder /></i><strong>{folder.name}</strong></span><span>Folder · {folder._count.children + folder._count.documents} items</span><span>{formatDate(folder.updatedAt)}</span><span>—</span><span className="assetMore" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); void openAssetActions({ kind: "folder", id: folder.id, name: folder.name }); }}><MoreHorizontal /></span></button>)}
-          {visibleDocuments.map((document) => <button className="assetRow" key={document.id} onClick={() => void openDocument(document)}><span className="assetName"><i className="pdfIcon"><FileText /></i><strong>{document.name}</strong></span><span>PDF document</span><span>{formatDate(document.updatedAt)}</span><span>{formatBytes(document.size)}</span><span className="assetMore" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); void openAssetActions({ kind: "document", id: document.id, name: document.name }); }}><MoreHorizontal /></span></button>)}
+          {visibleFolders.map((folder) => <div className="assetRow folderDropTarget" key={folder.id} role="button" tabIndex={0} onClick={() => activeRoomId && void loadContents(activeRoomId, folder.id)} onKeyDown={(event) => { if (event.key === "Enter" && activeRoomId) void loadContents(activeRoomId, folder.id); }} onDragOver={(event) => { if (draggedDocument) event.preventDefault(); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); void moveDroppedDocument(folder.id); }}><span className="assetName"><i className="folderIcon"><Folder /></i><strong>{folder.name}</strong></span><span>Folder · {folder._count.children + folder._count.documents} items</span><span>{formatDate(folder.updatedAt)}</span><span>—</span><span className="assetActions"><button onClick={(event) => { event.stopPropagation(); beginShare({ kind: "folder", id: folder.id, name: folder.name }); }} aria-label={`Share ${folder.name}`}><Share2 /></button><button onClick={(event) => { event.stopPropagation(); void openAssetActions({ kind: "folder", id: folder.id, name: folder.name }); }} aria-label={`Actions for ${folder.name}`}><MoreHorizontal /></button></span></div>)}
+          {visibleDocuments.map((document) => <div className="assetRow documentRow" key={document.id} role="button" tabIndex={0} draggable onDragStart={(event) => { setDraggedDocument({ id: document.id, name: document.name }); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-vaultroom-document", document.id); }} onDragEnd={() => setDraggedDocument(null)} onClick={() => void openDocument(document)} onKeyDown={(event) => { if (event.key === "Enter") void openDocument(document); }}><span className="assetName"><i className="pdfIcon"><FileText /></i><strong>{document.name}</strong></span><span>PDF document</span><span>{formatDate(document.updatedAt)}</span><span>{formatBytes(document.size)}</span><span className="assetActions"><button onClick={(event) => { event.stopPropagation(); void openDocument(document); }} aria-label={`Preview ${document.name}`}><Eye /></button><button onClick={(event) => { event.stopPropagation(); beginShare({ kind: "document", id: document.id, name: document.name }); }} aria-label={`Share ${document.name}`}><Share2 /></button><button onClick={(event) => { event.stopPropagation(); void openAssetActions({ kind: "document", id: document.id, name: document.name }); }} aria-label={`Actions for ${document.name}`}><MoreHorizontal /></button></span></div>)}
           {!visibleFolders.length && !visibleDocuments.length && <div className="folderEmpty"><FileText /><strong>This folder is empty</strong><p>Drop PDF files here or create a folder to organise the review.</p></div>}
         </section>
         {dragging && <div className="dropOverlay" onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={onDrop}><Upload /><strong>Drop PDFs into this folder</strong><span>Up to 25 MB per file</span></div>}
@@ -245,6 +272,7 @@ export function DataRoomApp() {
       {selectedAsset && <div className="modalBackdrop" onMouseDown={() => setSelectedAsset(null)}><section className="vaultModal assetModal" onMouseDown={(event) => event.stopPropagation()}><button type="button" className="modalClose" onClick={() => setSelectedAsset(null)}><X /></button><p className="eyebrow">{selectedAsset.kind.toUpperCase()} ACTIONS</p><h2>{selectedAsset.name}</h2><label>Rename<input value={assetName} onChange={(event) => setAssetName(event.target.value)} /></label><button className="actionLine" onClick={() => void renameAsset()}><Pencil /> Save new name</button>{selectedAsset.kind === "document" && <><label>Move to<select value={targetFolderId} onChange={(event) => setTargetFolderId(event.target.value)}><option value="">Data room root</option>{folderOptions.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label><button className="actionLine" onClick={() => void moveDocument()}><FolderInput /> Move document</button></>}<button className="actionLine" onClick={() => beginShare(selectedAsset)}><Share2 /> Share {selectedAsset.kind}</button><button className="actionLine dangerAction" onClick={() => void deleteAsset()}><Trash2 /> Delete {selectedAsset.kind}</button></section></div>}
       {shareTarget && <div className="modalBackdrop" onMouseDown={() => setShareTarget(null)}><form className="vaultModal shareModal" onMouseDown={(event) => event.stopPropagation()} onSubmit={createShare}><button type="button" className="modalClose" onClick={() => setShareTarget(null)}><X /></button><p className="eyebrow">READ-ONLY ACCESS</p><h2>Share {shareTarget.name}</h2>{!shareLink ? <><div className="shareModes"><button type="button" data-active={shareMode === "PUBLIC"} onClick={() => setShareMode("PUBLIC")}><Globe2 /><span><strong>Public link</strong><small>Anyone with the link can view</small></span></button><button type="button" data-active={shareMode === "PERMISSIONED"} onClick={() => setShareMode("PERMISSIONED")}><LockKeyhole /><span><strong>Invited person</strong><small>Clerk sign-in and matching email required</small></span></button></div>{shareMode === "PERMISSIONED" && <label>Recipient email<input type="email" required value={shareEmail} onChange={(event) => setShareEmail(event.target.value)} placeholder="reviewer@company.com" /></label>}<div><button type="button" className="quietButton" onClick={() => setShareTarget(null)}>Cancel</button><button className="primaryButton"><Link2 /> Create link</button></div></> : <div className="shareResult"><Check /><strong>Read-only link created</strong><p>The link is active now and never grants edit access.</p><button type="button" onClick={async () => { await navigator.clipboard.writeText(shareLink); setCopied(true); }}>{copied ? <Check /> : <Copy />}{copied ? "Copied" : "Copy link"}</button><a href={shareLink} target="_blank">Open shared view</a><button type="button" className="revokeLink" onClick={() => void revokeCurrentShare()}><Trash2 /> Revoke access</button></div>}</form></div>}
       {preview && <div className="previewPanel"><header><div><FileText /><strong>{preview.name}</strong></div><button onClick={() => setPreview(null)}><X /></button></header><iframe title={preview.name} src={preview.url} /></div>}
+      {reviewOpen && activeRoomId && <ReviewPanel roomId={activeRoomId} getToken={getToken} onClose={() => setReviewOpen(false)} onRoomChanged={async () => { await loadRooms(); await loadContents(activeRoomId, contents?.folderId); }} onRoomDeleted={async () => { setReviewOpen(false); setContents(null); await loadRooms(); }} />}
     </main>
   );
 }

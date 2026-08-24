@@ -22,6 +22,7 @@ import {
   CreateShareDto,
   UpdateDocumentDto,
   UpdateFolderDto,
+  UpdateRoomDto,
 } from './dto/room.dto';
 import { RoomsService } from './rooms.service';
 
@@ -38,6 +39,30 @@ export class RoomsController {
   @Post('rooms')
   create(@AuthUser() ownerId: string, @Body() input: CreateRoomDto) {
     return this.rooms.create(ownerId, input.name);
+  }
+
+  @Post('rooms/demo')
+  createDemo(@AuthUser() ownerId: string) {
+    return this.rooms.createDemo(ownerId);
+  }
+
+  @Patch('rooms/:roomId')
+  updateRoom(
+    @AuthUser() ownerId: string,
+    @Param('roomId') roomId: string,
+    @Body() input: UpdateRoomDto,
+  ) {
+    return this.rooms.updateRoom(ownerId, roomId, input.name);
+  }
+
+  @Delete('rooms/:roomId')
+  deleteRoom(@AuthUser() ownerId: string, @Param('roomId') roomId: string) {
+    return this.rooms.deleteRoom(ownerId, roomId);
+  }
+
+  @Get('rooms/:roomId/overview')
+  overview(@AuthUser() ownerId: string, @Param('roomId') roomId: string) {
+    return this.rooms.overview(ownerId, roomId);
   }
 
   @Get('rooms/:roomId/contents')

@@ -18,15 +18,33 @@ enum ShareRole {
   EDITOR
 }
 
+enum AuditAction {
+  ROOM_CREATED
+  ROOM_RENAMED
+  FOLDER_CREATED
+  FOLDER_RENAMED
+  FOLDER_DELETED
+  DOCUMENT_UPLOADED
+  DOCUMENT_VIEWED
+  DOCUMENT_RENAMED
+  DOCUMENT_MOVED
+  DOCUMENT_DELETED
+  SHARE_CREATED
+  SHARE_REVOKED
+  SHARE_VIEWED
+  DEMO_CREATED
+}
+
 model DataRoom {
-  id        String     @id @default(cuid())
-  name      String
-  ownerId   String
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  folders   Folder[]
-  documents Document[]
-  shares    Share[]
+  id          String       @id @default(cuid())
+  name        String
+  ownerId     String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  folders     Folder[]
+  documents   Document[]
+  shares      Share[]
+  auditEvents AuditEvent[]
 
   @@index([ownerId, updatedAt])
 }
@@ -94,4 +112,19 @@ model Share {
   @@index([dataRoomId, revokedAt])
   @@index([folderId, revokedAt])
   @@index([documentId, revokedAt])
+}
+
+model AuditEvent {
+  id         String      @id @default(cuid())
+  dataRoomId String
+  action     AuditAction
+  actorId    String?
+  targetId   String?
+  targetName String?
+  detail     Json?
+  createdAt  DateTime    @default(now())
+  dataRoom   DataRoom    @relation(fields: [dataRoomId], references: [id], onDelete: Cascade)
+
+  @@index([dataRoomId, createdAt])
+  @@index([action, createdAt])
 }

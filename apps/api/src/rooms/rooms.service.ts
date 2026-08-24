@@ -6,6 +6,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { AuditAction } from '../../generated/prisma/enums';
+import type { Prisma } from '../../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import {
@@ -33,10 +36,96 @@ export class RoomsService {
     });
   }
 
-  create(ownerId: string, name: string) {
-    return this.prisma.dataRoom.create({
+  async create(ownerId: string, name: string) {
+    const room = await this.prisma.dataRoom.create({
       data: { ownerId, name: this.cleanName(name) },
     });
+    await this.audit(
+      room.id,
+      AuditAction.ROOM_CREATED,
+      ownerId,
+      room.id,
+      room.name,
+    );
+    return room;
+  }
+
+  async updateRoom(ownerId: string, roomId: string, requestedName: string) {
+    const room = await this.requireRoom(ownerId, roomId);
+    const updated = await this.prisma.dataRoom.update({
+      where: { id: room.id },
+      data: { name: this.cleanName(requestedName) },
+    });
+    await this.audit(
+      room.id,
+      AuditAction.ROOM_RENAMED,
+      ownerId,
+      room.id,
+      updated.name,
+      { previousName: room.name },
+    );
+    return updated;
+  }
+
+  async deleteRoom(ownerId: string, roomId: string) {
+    const room = await this.requireRoom(ownerId, roomId);
+    const documents = await this.prisma.document.findMany({
+      where: { dataRoomId: room.id },
+      select: { storageKey: true },
+    });
+    await this.storage.remove(documents.map((document) => document.storageKey));
+    await this.prisma.dataRoom.delete({ where: { id: room.id } });
+    return { deleted: true, deletedDocuments: documents.length };
+  }
+
+  async createDemo(ownerId: string) {
+    const room = await this.create(ownerId, 'Northstar acquisition');
+    const financials = await this.createFolder(ownerId, room.id, {
+      name: '01 Financials',
+    });
+    const legal = await this.createFolder(ownerId, room.id, {
+      name: '02 Legal',
+    });
+    const product = await this.createFolder(ownerId, room.id, {
+      name: '03 Product & IP',
+    });
+    const documents = [
+      {
+        folderId: financials.id,
+        name: 'FY 2025 management accounts.pdf',
+        title: 'Management accounts',
+        subtitle: 'FY 2025 · Confidential draft',
+      },
+      {
+        folderId: legal.id,
+        name: 'Corporate structure.pdf',
+        title: 'Corporate structure',
+        subtitle: 'Entities, ownership and key agreements',
+      },
+      {
+        folderId: product.id,
+        name: 'Product architecture.pdf',
+        title: 'Product architecture',
+        subtitle: 'Systems, data flows and intellectual property',
+      },
+    ];
+    for (const item of documents) {
+      const buffer = await this.demoPdf(item.title, item.subtitle);
+      await this.upload(ownerId, room.id, item.folderId, {
+        buffer,
+        size: buffer.length,
+        mimetype: 'application/pdf',
+        originalname: item.name,
+      } as Express.Multer.File);
+    }
+    await this.audit(
+      room.id,
+      AuditAction.DEMO_CREATED,
+      ownerId,
+      room.id,
+      room.name,
+    );
+    return room;
   }
 
   async contents(ownerId: string, roomId: string, folderId?: string) {
@@ -75,6 +164,52 @@ export class RoomsService {
     });
   }
 
+  async overview(ownerId: string, roomId: string) {
+    const room = await this.requireRoom(ownerId, roomId);
+    const [shares, audit] = await Promise.all([
+      this.prisma.share.findMany({
+        where: {
+          revokedAt: null,
+          OR: [
+            { dataRoomId: room.id },
+            { folder: { dataRoomId: room.id } },
+            { document: { dataRoomId: room.id } },
+          ],
+        },
+        include: {
+          folder: { select: { name: true } },
+          document: { select: { name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.auditEvent.findMany({
+        where: { dataRoomId: room.id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      }),
+    ]);
+    return {
+      room,
+      shares: shares.map((share) => ({
+        id: share.id,
+        token: share.token,
+        mode: share.mode,
+        role: share.role,
+        email: share.email,
+        scope: share.dataRoomId
+          ? 'ROOM'
+          : share.folderId
+            ? 'FOLDER'
+            : 'DOCUMENT',
+        targetName: share.dataRoomId
+          ? room.name
+          : (share.folder?.name ?? share.document?.name ?? 'Deleted item'),
+        createdAt: share.createdAt,
+      })),
+      audit,
+    };
+  }
+
   async createFolder(ownerId: string, roomId: string, input: CreateFolderDto) {
     await this.requireRoom(ownerId, roomId);
     if (input.parentId) await this.requireFolder(roomId, input.parentId);
@@ -83,7 +218,7 @@ export class RoomsService {
       input.parentId ?? null,
       this.cleanName(input.name),
     );
-    return this.prisma.folder.create({
+    const folder = await this.prisma.folder.create({
       data: {
         dataRoomId: roomId,
         parentId: input.parentId ?? null,
@@ -91,6 +226,14 @@ export class RoomsService {
         name,
       },
     });
+    await this.audit(
+      roomId,
+      AuditAction.FOLDER_CREATED,
+      ownerId,
+      folder.id,
+      folder.name,
+    );
+    return folder;
   }
 
   async renameFolder(ownerId: string, folderId: string, requestedName: string) {
@@ -101,10 +244,19 @@ export class RoomsService {
       this.cleanName(requestedName),
       folder.id,
     );
-    return this.prisma.folder.update({
+    const updated = await this.prisma.folder.update({
       where: { id: folderId },
       data: { name },
     });
+    await this.audit(
+      folder.dataRoomId,
+      AuditAction.FOLDER_RENAMED,
+      ownerId,
+      folder.id,
+      updated.name,
+      { previousName: folder.name },
+    );
+    return updated;
   }
 
   async deleteFolder(ownerId: string, folderId: string) {
@@ -116,6 +268,17 @@ export class RoomsService {
     });
     await this.storage.remove(documents.map((document) => document.storageKey));
     await this.prisma.folder.delete({ where: { id: folder.id } });
+    await this.audit(
+      folder.dataRoomId,
+      AuditAction.FOLDER_DELETED,
+      ownerId,
+      folder.id,
+      folder.name,
+      {
+        deletedFolders: folderIds.length,
+        deletedDocuments: documents.length,
+      },
+    );
     return {
       deletedFolders: folderIds.length,
       deletedDocuments: documents.length,
@@ -141,7 +304,7 @@ export class RoomsService {
     const storageKey = `${ownerId}/${roomId}/${randomUUID()}.pdf`;
     await this.storage.put(storageKey, file.buffer, file.mimetype);
     try {
-      return await this.prisma.document.create({
+      const document = await this.prisma.document.create({
         data: {
           dataRoomId: roomId,
           folderId: folderId ?? null,
@@ -152,6 +315,15 @@ export class RoomsService {
           storageKey,
         },
       });
+      await this.audit(
+        roomId,
+        AuditAction.DOCUMENT_UPLOADED,
+        ownerId,
+        document.id,
+        document.name,
+        { folderId: folderId ?? null },
+      );
+      return document;
     } catch (error) {
       await this.storage.remove([storageKey]);
       throw error;
@@ -175,7 +347,7 @@ export class RoomsService {
       requestedName,
       document.id,
     );
-    return this.prisma.document.update({
+    const updated = await this.prisma.document.update({
       where: { id: document.id },
       data: {
         folderId: targetFolderId,
@@ -183,17 +355,45 @@ export class RoomsService {
         name,
       },
     });
+    const moved = targetFolderId !== document.folderId;
+    await this.audit(
+      document.dataRoomId,
+      moved ? AuditAction.DOCUMENT_MOVED : AuditAction.DOCUMENT_RENAMED,
+      ownerId,
+      document.id,
+      updated.name,
+      {
+        previousName: document.name,
+        fromFolderId: document.folderId,
+        toFolderId: targetFolderId,
+      },
+    );
+    return updated;
   }
 
   async deleteDocument(ownerId: string, documentId: string) {
     const document = await this.requireOwnedDocument(ownerId, documentId);
     await this.storage.remove([document.storageKey]);
     await this.prisma.document.delete({ where: { id: document.id } });
+    await this.audit(
+      document.dataRoomId,
+      AuditAction.DOCUMENT_DELETED,
+      ownerId,
+      document.id,
+      document.name,
+    );
     return { deleted: true };
   }
 
   async documentStream(ownerId: string, documentId: string) {
     const document = await this.requireOwnedDocument(ownerId, documentId);
+    await this.audit(
+      document.dataRoomId,
+      AuditAction.DOCUMENT_VIEWED,
+      ownerId,
+      document.id,
+      document.name,
+    );
     return { document, stream: await this.storage.get(document.storageKey) };
   }
 
@@ -208,7 +408,7 @@ export class RoomsService {
       input.scope,
       input.targetId,
     );
-    return this.prisma.share.create({
+    const share = await this.prisma.share.create({
       data: {
         ...target,
         mode: input.mode,
@@ -221,6 +421,19 @@ export class RoomsService {
         createdBy: ownerId,
       },
     });
+    const roomId = await this.shareRoomId(share);
+    await this.audit(
+      roomId,
+      AuditAction.SHARE_CREATED,
+      ownerId,
+      share.id,
+      input.scope,
+      {
+        mode: share.mode,
+        email: share.email,
+      },
+    );
+    return share;
   }
 
   async revokeShare(ownerId: string, shareId: string) {
@@ -229,10 +442,18 @@ export class RoomsService {
     });
     if (!share || share.createdBy !== ownerId)
       throw new NotFoundException('Share not found');
-    return this.prisma.share.update({
+    const updated = await this.prisma.share.update({
       where: { id: shareId },
       data: { revokedAt: new Date() },
     });
+    await this.audit(
+      await this.shareRoomId(share),
+      AuditAction.SHARE_REVOKED,
+      ownerId,
+      share.id,
+      share.email ?? share.mode,
+    );
+    return updated;
   }
 
   async sharedView(
@@ -259,6 +480,13 @@ export class RoomsService {
         throw new ForbiddenException('Sign in with the invited email address');
     }
     if (share.document) {
+      await this.audit(
+        share.document.dataRoomId,
+        AuditAction.SHARE_VIEWED,
+        viewer?.userId,
+        share.id,
+        share.document.name,
+      );
       return {
         share: {
           mode: share.mode,
@@ -274,6 +502,13 @@ export class RoomsService {
     }
     const room = share.dataRoom ?? share.folder?.dataRoom;
     if (!room) throw new NotFoundException('Shared content no longer exists');
+    await this.audit(
+      room.id,
+      AuditAction.SHARE_VIEWED,
+      viewer?.userId,
+      share.id,
+      share.folder?.name ?? room.name,
+    );
     const folderId = requestedFolderId ?? share.folderId ?? undefined;
     if (folderId) {
       const requestedFolder = await this.requireFolder(room.id, folderId);
@@ -346,6 +581,14 @@ export class RoomsService {
     }
     if (!allowed)
       throw new ForbiddenException('Document is outside this share');
+    await this.audit(
+      document.dataRoomId,
+      AuditAction.DOCUMENT_VIEWED,
+      viewer?.userId,
+      document.id,
+      document.name,
+      { viaShareId: share.id },
+    );
     return { document, stream: await this.storage.get(document.storageKey) };
   }
 
@@ -496,5 +739,99 @@ export class RoomsService {
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };
+  }
+
+  private async shareRoomId(share: {
+    dataRoomId: string | null;
+    folderId: string | null;
+    documentId: string | null;
+  }) {
+    if (share.dataRoomId) return share.dataRoomId;
+    if (share.folderId) {
+      const folder = await this.prisma.folder.findUnique({
+        where: { id: share.folderId },
+        select: { dataRoomId: true },
+      });
+      if (folder) return folder.dataRoomId;
+    }
+    if (share.documentId) {
+      const document = await this.prisma.document.findUnique({
+        where: { id: share.documentId },
+        select: { dataRoomId: true },
+      });
+      if (document) return document.dataRoomId;
+    }
+    throw new NotFoundException('Shared content no longer exists');
+  }
+
+  private audit(
+    dataRoomId: string,
+    action: AuditAction,
+    actorId?: string,
+    targetId?: string,
+    targetName?: string,
+    detail?: Prisma.InputJsonValue,
+  ) {
+    return this.prisma.auditEvent.create({
+      data: {
+        dataRoomId,
+        action,
+        actorId,
+        targetId,
+        targetName,
+        detail,
+      },
+    });
+  }
+
+  private async demoPdf(title: string, subtitle: string) {
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([595, 842]);
+    const serif = await pdf.embedFont(StandardFonts.TimesRoman);
+    const sans = await pdf.embedFont(StandardFonts.Helvetica);
+    page.drawRectangle({
+      x: 0,
+      y: 0,
+      width: 595,
+      height: 842,
+      color: rgb(0.95, 0.94, 0.9),
+    });
+    page.drawText('VAULTROOM / NORTHSTAR', {
+      x: 54,
+      y: 770,
+      size: 9,
+      font: sans,
+      color: rgb(0.27, 0.33, 0.28),
+    });
+    page.drawText(title, {
+      x: 54,
+      y: 650,
+      size: 34,
+      font: serif,
+      color: rgb(0.11, 0.13, 0.11),
+      maxWidth: 480,
+    });
+    page.drawText(subtitle, {
+      x: 54,
+      y: 612,
+      size: 12,
+      font: sans,
+      color: rgb(0.43, 0.46, 0.43),
+      maxWidth: 450,
+    });
+    page.drawLine({
+      start: { x: 54, y: 580 },
+      end: { x: 541, y: 580 },
+      thickness: 1,
+      color: rgb(0.72, 0.7, 0.64),
+    });
+    page.drawText('Prepared for due diligence review', {
+      x: 54,
+      y: 92,
+      size: 10,
+      font: sans,
+      color: rgb(0.43, 0.46, 0.43),
+    });
+    return Buffer.from(await pdf.save());
   }
 }
