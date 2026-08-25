@@ -15,8 +15,17 @@ describe('AppController', () => {
   });
 
   describe('root', () => {
-    it('should return "Hello World!"', () => {
-      expect(appController.getHello()).toBe('Hello World!');
+    it('describes the deployed service', () => {
+      expect(appController.getServiceInfo()).toEqual({
+        service: 'Vaultroom API',
+        status: 'ok',
+        frontend: 'https://vaultroom-ruby.vercel.app',
+        health: '/health',
+      });
+    });
+
+    it('exposes a stable health response', () => {
+      expect(appController.getHealth()).toEqual({ status: 'ok' });
     });
   });
 });

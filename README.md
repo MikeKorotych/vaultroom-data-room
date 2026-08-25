@@ -3,7 +3,8 @@
 Vaultroom is a full-stack data-room MVP for confidential due diligence. Authenticated owners create rooms, organise nested folders, upload and preview PDFs, resolve duplicate names, move or delete documents, and create revocable read-only shares.
 
 - Live web: <https://vaultroom-ruby.vercel.app>
-- API health: <https://vaultroom-api-production.up.railway.app>
+- API service: <https://vaultroom-api-production.up.railway.app>
+- API health: <https://vaultroom-api-production.up.railway.app/health>
 
 ## Live architecture
 
@@ -164,6 +165,12 @@ At sustained scale, that read becomes too expensive to repeat. I would store den
 - Direct multipart uploads, checksums and virus scanning
 - Playwright end-to-end tests against disposable Postgres and MinIO
 - Optimistic locking for concurrent rename/move operations
+
+## Product direction beyond the assignment
+
+I would evolve this into a zero-knowledge deal vault rather than a general password-manager clone. The browser would encrypt each file before upload, the server would store only ciphertext, and identified reviewers would receive wrapped room or file keys. That creates useful protection against a compromised database, bucket or curious infrastructure operator while preserving the data-room workflow already built here.
+
+I would not start by adding cryptography to the current upload handler. The next artifact should be a written threat model covering recovery, device enrollment, metadata leakage, revocation limits and organisation-admin access. Only then would I implement an isolated client-side crypto package using audited primitives and test vectors, followed by an external security review.
 
 ## AI usage
 
